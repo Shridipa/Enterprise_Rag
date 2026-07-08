@@ -1,6 +1,6 @@
 """Tests for semantic cache module."""
 import pytest
-from unittest.mock import patch, MagicMock, PropertyMock
+from unittest.mock import patch, MagicMock
 
 from backend.rag.cache import SemanticCache, CacheResult
 

@@ -11,7 +11,6 @@ Performance: O(log n) using Qdrant's HNSW index for scalable cache lookup.
 """
 from __future__ import annotations
 
-import json
 import logging
 import time
 import uuid
