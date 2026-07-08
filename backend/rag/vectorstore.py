@@ -16,9 +16,9 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, HnswConfigDiff
 import numpy as np
 
-logger = logging.getLogger(__name__)
-
 from ..config import settings
+
+logger = logging.getLogger(__name__)
 
 # ── Embedding model ───────────────────────────────────────────────────────────
 EMBEDDING_DIM = 1536  # text-embedding-3-small has 1536 dims

@@ -1,5 +1,4 @@
 """Tests for Celery ingest task."""
-import pytest
 from unittest.mock import patch, MagicMock
 
 from backend.tasks.ingest import _extract_text_from_pdf, _check_duplicate
@@ -27,7 +26,7 @@ class TestPDFExtraction:
         """Test text extraction from an empty PDF."""
         import fitz
         doc = fitz.open()
-        page = doc.new_page()
+        doc.new_page()
         # Empty page
         pdf_path = tmp_path / "empty.pdf"
         doc.save(str(pdf_path))
