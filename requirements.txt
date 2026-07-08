@@ -1,0 +1,49 @@
+# Core API
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+python-multipart>=0.0.6
+
+# Async task queue
+celery>=5.3.0
+redis>=5.0.0
+kombu>=5.3.0
+
+# LangChain ecosystem
+langchain>=0.1.0
+langchain-openai>=0.1.0
+langchain-qdrant>=0.1.0
+langchain-community>=0.1.0
+
+# Vector DB
+qdrant-client>=1.6.0
+
+# PDF parsing
+PyMuPDF>=1.23.0
+
+# OCR support (optional)
+pytesseract>=0.3.10
+Pillow>=10.0.0
+
+# Embeddings / ML
+numpy>=1.24.0
+
+# Frontend
+streamlit>=1.26.0
+httpx>=0.24.0
+
+# Settings & utils
+pydantic-settings>=2.0.0
+python-dotenv>=1.0.0
+
+# Rate limiting
+slowapi>=0.1.9
+
+# Dev / testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+pytest-mock>=3.11.0
+httpx>=0.24.0
+
+# Security scanning
+safety>=2.3.0
