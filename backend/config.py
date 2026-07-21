@@ -18,6 +18,9 @@ class Settings(BaseSettings):
         env_prefix="",
     )
 
+    # API authentication
+    api_key: str = Field(default="test-api-key-12345", description="Application API key")
+
     # OpenAI
     openai_api_key: str = Field(default="sk-test-key-1234567890", description="OpenAI API key")
     

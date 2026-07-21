@@ -35,6 +35,7 @@ from .config import settings
 from .rag.cache import semantic_cache
 from .rag.chain import build_rag_chain
 from .rag.vectorstore import collection_info
+from .services.repository_service import get_repository, ingest_repository
 
 # Configure structured logging
 logging.basicConfig(
@@ -49,9 +50,9 @@ API_PREFIX = f"/{settings.api_version}"
 # ── Rate Limiter ─────────────────────────────────────────────────────────────
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(
-    title="Enterprise RAG API",
-    description="Production-grade RAG pipeline with semantic caching and async ingestion.",
-    version="1.0.0",
+    title="CodeMind AI",
+    description="AI software engineering platform for repository understanding, architecture exploration, and code intelligence.",
+    version="1.1.0",
 )
 app.state.limiter = limiter
 app.add_exception_handler(429, _rate_limit_exceeded_handler)
@@ -78,7 +79,7 @@ def verify_api_key(request: Request) -> str:
             detail="API key required",
         )
     # In production, use proper secret management
-    expected_key = os.getenv("API_KEY", settings.openai_api_key)
+    expected_key = os.getenv("API_KEY") or settings.api_key
     if api_key != expected_key:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -114,6 +115,21 @@ class QueryResponse(BaseModel):
     similarity: float | None = None
     cached_query: str | None = None
     sources: list[dict] | None = None
+
+
+class RepositoryIngestRequest(BaseModel):
+    source_type: str = Field(..., description="Either 'folder' or 'git'")
+    path: str = Field(..., min_length=1)
+    name: str | None = Field(default=None)
+
+
+class RepositoryIngestResponse(BaseModel):
+    repo_id: str
+    status: str
+    name: str
+    summary: dict[str, Any]
+    file_count: int
+    graph: dict[str, Any] | None = None
 
 
 # ── Endpoint 1: Ingest ────────────────────────────────────────────────────────
@@ -269,6 +285,51 @@ async def query(
         latency_ms=latency_ms,
         sources=source_docs,
     )
+
+
+# ── Repository intelligence endpoints ───────────────────────────────────────
+@app.post(f"{API_PREFIX}/repositories/ingest", response_model=RepositoryIngestResponse, summary="Index a repository or folder")
+@limiter.limit(f"{settings.rate_limit_requests}/minute")
+async def ingest_repository_endpoint(
+    request: Request,
+    req: RepositoryIngestRequest,
+    api_key: str = Depends(verify_api_key),
+) -> RepositoryIngestResponse:
+    result = ingest_repository(req.source_type, req.path, req.name)
+    return RepositoryIngestResponse(**result)
+
+
+@app.get(f"{API_PREFIX}/architecture/explore/{{repo_id}}", summary="Explore repository architecture graph")
+@limiter.limit(f"{settings.rate_limit_requests}/minute")
+async def explore_architecture(
+    request: Request,
+    repo_id: str,
+    api_key: str = Depends(verify_api_key),
+) -> dict[str, Any]:
+    repository = get_repository(repo_id)
+    if repository is None:
+        raise HTTPException(status_code=404, detail="Repository not found")
+    return {"repo_id": repo_id, "name": repository.name, **repository.graph}
+
+
+@app.get(f"{API_PREFIX}/repositories/{{repo_id}}", summary="Get repository details and analysis")
+@limiter.limit(f"{settings.rate_limit_requests}/minute")
+async def get_repository_details(
+    request: Request,
+    repo_id: str,
+    api_key: str = Depends(verify_api_key),
+) -> dict[str, Any]:
+    repository = get_repository(repo_id)
+    if repository is None:
+        raise HTTPException(status_code=404, detail="Repository not found")
+    return {
+        "repo_id": repo_id,
+        "name": repository.name,
+        "path": repository.path,
+        "summary": repository.summary,
+        "file_count": len(repository.files),
+        "graph": repository.graph,
+    }
 
 
 # ── Endpoint 4: Health ────────────────────────────────────────────────────────

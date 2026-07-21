@@ -1,40 +1,55 @@
-# Enterprise RAG Pipeline
+# CodeMind AI
 
-Production-grade Retrieval-Augmented Generation system with **semantic caching** and **async PDF ingestion**.
+CodeMind AI is an AI software engineering platform for repository understanding, architecture exploration, code review assistance, and developer productivity. It preserves the existing FastAPI, Redis, Celery, Qdrant, Docker, authentication, semantic caching, async ingestion, CI, tests, and observability pieces while extending the system for software-repository workflows.
+
+## What CodeMind AI does
+
+- Ingests folders and Git repositories for analysis
+- Supports Python, JavaScript, TypeScript, Java, Go, Rust, and C++ repository analysis
+- Extracts repository structure, modules, imports, dependencies, and symbol information
+- Builds a lightweight architecture graph for navigation and exploration
+- Exposes repository endpoints for indexing and architecture discovery
+- Keeps the legacy document ingestion pipeline available for compatibility
 
 ## Architecture
 
-```
-INGESTION (async)
-  User uploads PDF → FastAPI /v1/ingest → Redis queue → Celery worker → Qdrant upsert
+```text
+REPOSITORY INDEXING
+  Folder or Git repo → FastAPI /v1/repositories/ingest → repository indexer → summaries + graph
 
-QUERY (sync)
-  User query → FastAPI /v1/query → Semantic cache check (cosine ≥ 0.90)
-                                    ├─ CACHE HIT  → return in 3–8 ms
-                                    └─ CACHE MISS → Qdrant search → GPT-4o-mini → store in cache
+ARCHITECTURE EXPLORATION
+  Repo ID → FastAPI /v1/architecture/explore/{repo_id} → module/file graph + dependency edges
+
+LEGACY DOCUMENT PATH
+  PDF upload → FastAPI /v1/ingest → Celery worker → Qdrant upsert → /v1/query
 ```
 
 ## Project Structure
 
-```
+```text
 enterprise-rag/
 ├── backend/
-│   ├── main.py              # FastAPI — 5 endpoints (v1)
-│   ├── celery_app.py        # Celery configuration
-│   ├── config.py            # Pydantic settings (reads .env)
+│   ├── main.py                    # FastAPI app with repository + legacy endpoints
+│   ├── celery_app.py              # Celery configuration
+│   ├── config.py                  # Pydantic settings (reads .env)
+│   ├── code_intelligence/
+│   │   └── repository_indexer.py  # Repository indexing and graph builder
+│   ├── services/
+│   │   └── repository_service.py  # In-memory repository service for indexing
 │   ├── tasks/
-│   │   └── ingest.py        # PDF → chunks → embeddings → Qdrant
+│   │   └── ingest.py              # PDF → chunks → embeddings → Qdrant
 │   └── rag/
-│       ├── vectorstore.py   # Qdrant wrapper + collection init
-│       ├── cache.py         # Semantic cache (Qdrant HNSW)
-│       └── chain.py         # LangChain RetrievalQA chain
+│       ├── vectorstore.py         # Qdrant wrapper + collection init
+│       ├── cache.py               # Semantic cache (Qdrant HNSW)
+│       └── chain.py               # LangChain RetrievalQA chain
 ├── frontend/
-│   └── app.py               # Streamlit chat UI
+│   └── app.py                     # Streamlit chat UI
 ├── tests/
-│   ├── test_config.py       # Configuration tests
-│   ├── test_main.py         # API endpoint tests
-│   ├── test_cache.py        # Cache tests
-│   └── test_ingest.py       # Ingestion tests
+│   ├── test_config.py
+│   ├── test_main.py
+│   ├── test_cache.py
+│   ├── test_ingest.py
+│   └── test_codemind.py           # Repository indexing and architecture tests
 ├── docker-compose.yml
 ├── Dockerfile.backend
 ├── Dockerfile.celery
@@ -43,160 +58,88 @@ enterprise-rag/
 └── .github/workflows/ci.yml
 ```
 
-## Quick Start (Local Dev)
-
-> The ingestion pipeline now includes a deterministic local embedding fallback, so the app can still index documents in local/dev environments even when a live OpenAI key is unavailable or invalid.
+## Quick Start
 
 ### 1. Prerequisites
 
 - Python 3.11+
-- Docker Desktop (for Redis + Qdrant)
-- OpenAI API key
+- Docker Desktop (for Redis and Qdrant)
+- Optional: OpenAI API key for the legacy LLM-backed query path
 
-### 2. Clone and set up environment
+### 2. Create a virtual environment
 
 ```bash
-cd enterprise-rag
-python -m venv venv
+cd Enterprise_Rag
+python -m venv .venv
 
 # Windows
-venv\Scripts\activate
+.venv\Scripts\activate
 
 # macOS / Linux
-source venv/bin/activate
+source .venv/bin/activate
+```
 
+### 3. Install dependencies
+
+```bash
 pip install -r requirements.txt
 ```
 
-### 3. Configure environment
+### 4. Start infrastructure
 
 ```bash
-cp .env.example .env
-# Edit .env and set your OPENAI_API_KEY and API_KEY
+docker compose up -d redis qdrant
 ```
 
-### 4. Start Redis + Qdrant
+### 5. Run the backend
 
-```bash
-docker-compose up -d redis qdrant
-```
-
-### 5. Start all three processes (three terminals)
-
-**Terminal 1 — FastAPI backend**
 ```bash
 cd backend
 uvicorn main:app --reload --port 8000
 ```
 
-**Terminal 2 — Celery worker**
-```bash
-cd backend
-celery -A celery_app.celery_app worker --loglevel=info --concurrency=4
-```
+### 6. Run the frontend
 
-**Terminal 3 — Streamlit frontend**
 ```bash
 cd frontend
 streamlit run app.py
 ```
 
-Open **http://localhost:8501** in your browser.
-
----
-
-## Quick Start (Docker — Full Stack)
-
-```bash
-cp .env.example .env
-# Set OPENAI_API_KEY and API_KEY in .env
-
-docker-compose up --build
-```
-
-| Service    | URL                       |
-|------------|---------------------------|
-| Frontend   | http://localhost:8502     |
-| API docs   | http://localhost:8001/docs|
-| Qdrant UI  | http://localhost:6333/dashboard |
-
----
-
 ## API Reference
 
-All endpoints are under `/v1/` prefix and require `X-API-Key` header.
+All endpoints are under `/v1/` and require an `X-API-Key` header.
 
-### `POST /v1/ingest`
-Upload a PDF. Returns `task_id` immediately — ingestion runs in background.
-
-```bash
-curl -X POST http://localhost:8000/v1/ingest \
-  -H "X-API-Key: your-api-key" \
-  -F "file=@document.pdf"
-# → {"task_id": "abc123", "doc_id": "...", "status": "queued"}
-```
-
-### `GET /v1/task/{task_id}`
-Poll ingestion progress.
+### `POST /v1/repositories/ingest`
+Index a repository or folder.
 
 ```bash
-curl -H "X-API-Key: your-api-key" http://localhost:8000/v1/task/abc123
-# → {"status": "EMBEDDING", "info": {"chunks": 47}}
-# → {"status": "SUCCESS", "info": {"chunks_ingested": 47, "pages": 12}}
-```
-
-### `POST /v1/query`
-Ask a question. Checks semantic cache first.
-
-```bash
-curl -X POST http://localhost:8000/v1/query \
+curl -X POST http://localhost:8000/v1/repositories/ingest \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
-  -d '{"question": "What is the refund policy?"}'
-# → {"answer": "...", "source": "CACHE HIT", "latency_ms": 5.2, "similarity": 0.9734}
-# → {"answer": "...", "source": "LLM GENERATED", "latency_ms": 1842.0}
+  -d '{"source_type": "folder", "path": "./my-repo", "name": "my-repo"}'
 ```
 
-### `GET /v1/health`
-Infrastructure status + cache stats.
+### `GET /v1/architecture/explore/{repo_id}`
+Explore the repository graph for an indexed repository.
 
-### `DELETE /v1/cache`
-Flush all semantic cache entries (requires authentication).
+### `GET /v1/repositories/{repo_id}`
+Retrieve repository details and analysis metadata.
 
----
+### `POST /v1/ingest`
+Upload a PDF for the legacy document ingestion pipeline.
 
-## Configuration
-
-All settings are in `.env`:
-
-| Variable               | Default              | Description                              |
-|------------------------|----------------------|------------------------------------------|
-| `OPENAI_API_KEY`       | *(required)*           | OpenAI API key                           |
-| `API_KEY`              | *(required)*           | API key for authentication                 |
-| `REDIS_URL`            | `redis://localhost:6379/0` | Redis connection string             |
-| `QDRANT_URL`           | `http://localhost:6333`    | Qdrant REST URL                     |
-| `QDRANT_COLLECTION`    | `enterprise_docs`    | Collection name                          |
-| `SIMILARITY_THRESHOLD` | `0.90`               | Cache hit threshold (0–1)                |
-| `CHUNK_SIZE`           | `512`                | Characters per chunk                     |
-| `CHUNK_OVERLAP`        | `64`                 | Overlap between chunks                   |
-| `TOP_K_CHUNKS`         | `4`                  | Chunks retrieved per query               |
-| `CACHE_TTL`            | `3600`               | Cache entry TTL in seconds               |
-| `MAX_FILE_SIZE_MB`     | `50`                 | Max upload file size in MB               |
-| `RATE_LIMIT_REQUESTS`  | `100`                | Requests per minute per user               |
-
----
-
-## Security Features
-
-- **API Key Authentication**: All endpoints require `X-API-Key` header
-- **File Validation**: Magic bytes and size validation for PDF uploads
-- **Rate Limiting**: 100 requests/minute per IP by default
-- **Non-root Containers**: All Docker images run as non-root user
-- **CORS**: Restricted to specific origins
-
----
+### `POST /v1/query`
+Ask a question against the legacy RAG path.
 
 ## Testing
+
+```bash
+pytest -q
+```
+
+## Notes
+
+The project now supports repository-aware analysis for software engineering workflows while retaining the original document-processing capabilities for compatibility.
 
 ```bash
 # Run all tests
