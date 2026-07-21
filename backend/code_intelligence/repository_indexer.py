@@ -125,15 +125,11 @@ class RepositoryIndexer:
         return {"symbols": [], "function_count": 0, "class_count": 0, "namespace_count": 0}
 
     def _analyze_cpp_content(self, content: str, rel_path: str) -> dict[str, Any]:
-        clang_result = self._analyze_cpp_with_clang(content)
-        if clang_result is not None:
-            return clang_result
-
         classes = [match.group(1) for match in CPP_CLASS_PATTERN.finditer(content)]
         namespaces = [match.group(1) for match in CPP_NAMESPACE_PATTERN.finditer(content)]
         functions = [match.group(1) for match in CPP_FUNCTION_PATTERN.finditer(content)]
         symbols = classes + namespaces + functions
-        return {
+        regex_result = {
             "symbols": symbols,
             "function_count": len(functions),
             "class_count": len(classes),
@@ -142,6 +138,14 @@ class RepositoryIndexer:
             "source": "regex-fallback",
             "path": rel_path,
         }
+
+        if regex_result["class_count"] or regex_result["function_count"] or regex_result["namespace_count"]:
+            return regex_result
+
+        clang_result = self._analyze_cpp_with_clang(content)
+        if clang_result is not None:
+            return clang_result
+        return regex_result
 
     def _analyze_cpp_with_clang(self, content: str) -> dict[str, Any] | None:
         try:
